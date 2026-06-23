@@ -1,0 +1,7 @@
+{
+  "services": {
+    "generate_code": {
+      "service": "mdi:qrcode-plus"
+    }
+  }
+}

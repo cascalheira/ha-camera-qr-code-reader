@@ -169,6 +169,13 @@ fraction of one core. End-to-end latency (code shown → action) is typically
 - `pyzbar` (auto-installed) → needs the `libzbar0` system library, present in
   Home Assistant OS / Container images.
 
+## Icon / branding
+
+The integration's icon lives in [`brands/`](brands/). HACS and Home Assistant
+load icons from the [home-assistant/brands](https://github.com/home-assistant/brands)
+repository (keyed by the `qr_rtsp` domain), so submit those assets there to have
+the icon appear — see [`brands/README.md`](brands/README.md) for the steps.
+
 ## License
 
 MIT
