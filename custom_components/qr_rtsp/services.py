@@ -180,7 +180,19 @@ def _render_png_b64(payload: str, caption: str | None = None) -> str:
     import qrcode  # noqa: PLC0415 - heavy import, deferred to runtime
     from PIL import Image, ImageDraw  # noqa: PLC0415
 
-    qr_img = qrcode.make(payload).get_image().convert("RGB")
+    # High error correction (~30%) so codes survive banding, glare and blur.
+    qr = qrcode.QRCode(
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(payload)
+    qr.make(fit=True)
+    qr_img = (
+        qr.make_image(fill_color="black", back_color="white")
+        .get_image()
+        .convert("RGB")
+    )
     caption = (caption or "").strip()
     if not caption:
         buffer = BytesIO()
