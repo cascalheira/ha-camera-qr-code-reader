@@ -76,17 +76,17 @@ async def async_create_code(
 ) -> dict[str, Any]:
     """Build a secure payload, render its PNG, and return the details.
 
-    The PNG is captioned with `caption` (falling back to the name) so a printed
-    code is identifiable. Raises ValueError if the name is invalid.
+    The name/caption is metadata only (rule label + PNG caption); it is NOT
+    embedded in the payload, which is just "<prefix>|<random>" to keep the QR
+    sparse and opaque. The PNG is captioned with `caption` (falling back to the
+    name). Raises ValueError if the name is empty.
     """
     name = (name or "").strip()
-    if not name or PAYLOAD_SEPARATOR in name or "\n" in name:
-        raise ValueError(
-            f"Name must be non-empty and cannot contain '{PAYLOAD_SEPARATOR}'."
-        )
+    if not name:
+        raise ValueError("Name must not be empty.")
 
     token = secrets.token_urlsafe(entropy_bytes)
-    payload = PAYLOAD_SEPARATOR.join((PAYLOAD_PREFIX, name, token))
+    payload = PAYLOAD_SEPARATOR.join((PAYLOAD_PREFIX, token))
     return {
         "payload": payload,
         "name": name,
@@ -180,9 +180,10 @@ def _render_png_b64(payload: str, caption: str | None = None) -> str:
     import qrcode  # noqa: PLC0415 - heavy import, deferred to runtime
     from PIL import Image, ImageDraw  # noqa: PLC0415
 
-    # High error correction (~30%) so codes survive banding, glare and blur.
+    # Medium error correction (~15%): keeps the code sparse (large modules) so
+    # low-resolution / banded camera captures can still resolve it.
     qr = qrcode.QRCode(
-        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
         box_size=10,
         border=4,
     )

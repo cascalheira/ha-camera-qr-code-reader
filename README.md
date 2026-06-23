@@ -102,10 +102,11 @@ more elaborate, e.g. handling denied scans.)
 The `qr_rtsp.generate_code` service mints a random code, renders a downloadable
 PNG, and (optionally) registers it as an access rule in one step.
 
-Payload format:
+Payload format — short and opaque on purpose (the name/title is metadata stored
+with the rule, **not** embedded in the code):
 
 ```
-ha-camera-qr-code-reader|<your name>|<random token>
+hcqrcr|<random token>
 ```
 
 The generated PNG is **captioned** with the code's title (or name) underneath,
@@ -113,10 +114,10 @@ so a printed code is identifiable at a glance. Captions render with a bundled
 font that covers accented characters (see `custom_components/qr_rtsp/fonts/`).
 
 The random token comes from Python's `secrets` (cryptographically secure) and
-is URL-safe, so it never collides with the `|` separator. **Complexity** is the
-number of random bytes — `16` = 128 bits (recommended), up to `64`. Higher
-entropy is stronger but produces a denser code that's harder to scan from a
-distance.
+is URL-safe. **Complexity** is the number of random bytes — `16` = 128 bits
+(recommended). Higher entropy is stronger but produces a denser code that is
+harder for a cheap camera to read; the codes use medium error correction to stay
+sparse. For best scannability keep complexity at 16.
 
 Run it from **Developer Tools → Actions** (tick *"Return response data"* to see
 the result), or in a script:

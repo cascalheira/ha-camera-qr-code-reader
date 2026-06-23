@@ -57,8 +57,9 @@ REASON_NOT_YET = "not_yet_valid"
 REASON_EXPIRED = "expired"
 REASON_OUT_OF_SCHEDULE = "out_of_schedule"
 
-# Generated payloads are "PAYLOAD_PREFIX|<name>|<random>"
-PAYLOAD_PREFIX = "ha-camera-qr-code-reader"
+# Generated payloads are "PAYLOAD_PREFIX|<name>|<random>".
+# Kept short on purpose so the QR stays sparse (easier to scan on cheap cameras).
+PAYLOAD_PREFIX = "hcqrcr"
 PAYLOAD_SEPARATOR = "|"
 
 # Code-generation service

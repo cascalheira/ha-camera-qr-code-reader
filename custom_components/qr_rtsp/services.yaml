@@ -2,7 +2,7 @@ generate_code:
   name: Generate QR code
   description: >-
     Create a secure random QR code with payload
-    "ha-camera-qr-code-reader|<name>|<random>". Returns the PNG as base64 in the
+    "hcqrcr|<random>". Returns the PNG as base64 in the
     response data (never written to a public folder) and can optionally register
     it as an access rule on a device.
   fields:
