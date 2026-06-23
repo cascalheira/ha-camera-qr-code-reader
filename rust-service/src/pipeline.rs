@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::sync::mpsc;
+use tokio::task::JoinSet;
 
 use crate::protocol::ServerMsg;
 use crate::qr;
@@ -94,15 +95,28 @@ async fn run_once(
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
 
-    let mut child = cmd.spawn()?;
+    let mut child = cmd.spawn().map_err(|err| {
+        anyhow::anyhow!(
+            "failed to start ffmpeg '{}': {err} \
+             (is ffmpeg installed and on PATH, or FFMPEG_PATH set?)",
+            cfg.ffmpeg
+        )
+    })?;
     let mut stdout = child
         .stdout
         .take()
         .ok_or_else(|| anyhow::anyhow!("ffmpeg produced no stdout"))?;
 
+    // Decode frames concurrently across the blocking pool so detection uses all
+    // cores; cap in-flight work so we don't build an unbounded backlog.
+    let max_decode = std::thread::available_parallelism()
+        .map(|n| n.get().min(8))
+        .unwrap_or(4);
+
     let mut buffer: Vec<u8> = Vec::with_capacity(1 << 20);
     let mut chunk = vec![0u8; READ_CHUNK];
     let mut last_seen: HashMap<String, Instant> = HashMap::new();
+    let mut decoding: JoinSet<Vec<String>> = JoinSet::new();
     let mut last_status = Instant::now();
     let mut streaming = false;
 
@@ -127,28 +141,19 @@ async fn run_once(
         buffer.extend_from_slice(&chunk[..read]);
         for frame in extract_frames(&mut buffer) {
             *frames += 1;
-            let codes = tokio::task::spawn_blocking(move || qr::decode_qr(&frame))
-                .await
-                .unwrap_or_default();
-            let now = Instant::now();
-            for payload in codes {
-                if let Some(prev) = last_seen.get(&payload) {
-                    if now.duration_since(*prev) < cfg.cooldown {
-                        continue;
-                    }
+            // Backpressure: wait for a slot when the pool is saturated.
+            while decoding.len() >= max_decode {
+                if let Some(res) = decoding.join_next().await {
+                    emit_codes(res.unwrap_or_default(), &mut last_seen, cfg.cooldown, tx)
+                        .await;
                 }
-                last_seen.insert(payload.clone(), now);
-                let _ = tx
-                    .send(ServerMsg::Scan {
-                        payload,
-                        symbol_type: "QRCODE".into(),
-                        ts: chrono::Utc::now().to_rfc3339(),
-                    })
-                    .await;
             }
-            if tx.is_closed() {
-                break;
-            }
+            decoding.spawn_blocking(move || qr::decode_qr(&frame));
+        }
+
+        // Reap whatever finished, without blocking.
+        while let Some(res) = decoding.try_join_next() {
+            emit_codes(res.unwrap_or_default(), &mut last_seen, cfg.cooldown, tx).await;
         }
 
         if tx.is_closed() {
@@ -166,8 +171,37 @@ async fn run_once(
         }
     };
 
+    // Drain in-flight decodes before tearing down.
+    while let Some(res) = decoding.join_next().await {
+        emit_codes(res.unwrap_or_default(), &mut last_seen, cfg.cooldown, tx).await;
+    }
     let _ = child.kill().await;
     result
+}
+
+/// Send detected payloads, debounced per-value by the cooldown.
+async fn emit_codes(
+    codes: Vec<String>,
+    last_seen: &mut HashMap<String, Instant>,
+    cooldown: Duration,
+    tx: &mpsc::Sender<ServerMsg>,
+) {
+    let now = Instant::now();
+    for payload in codes {
+        if let Some(prev) = last_seen.get(&payload) {
+            if now.duration_since(*prev) < cooldown {
+                continue;
+            }
+        }
+        last_seen.insert(payload.clone(), now);
+        let _ = tx
+            .send(ServerMsg::Scan {
+                payload,
+                symbol_type: "QRCODE".into(),
+                ts: chrono::Utc::now().to_rfc3339(),
+            })
+            .await;
+    }
 }
 
 /// Pull complete JPEG frames out of the buffer, leaving any partial tail.

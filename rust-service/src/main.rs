@@ -9,6 +9,7 @@ mod pipeline;
 mod protocol;
 mod qr;
 
+use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -19,6 +20,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
 use futures_util::{SinkExt, StreamExt};
+use tokio::process::Command;
 use tokio::sync::mpsc;
 
 use pipeline::StreamConfig;
@@ -56,6 +58,22 @@ async fn main() -> anyhow::Result<()> {
         ffmpeg,
         hwaccel,
     };
+
+    // Probe ffmpeg up front so a missing binary is obvious at startup.
+    match Command::new(&state.ffmpeg)
+        .arg("-version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .await
+    {
+        Ok(s) if s.success() => tracing::info!("ffmpeg OK: {}", state.ffmpeg),
+        Ok(_) => tracing::warn!("ffmpeg '{}' returned non-zero for -version", state.ffmpeg),
+        Err(err) => tracing::error!(
+            "ffmpeg not found at '{}': {err}. Install ffmpeg or set FFMPEG_PATH.",
+            state.ffmpeg
+        ),
+    }
 
     let app = Router::new()
         .route("/health", get(|| async { "ok" }))
