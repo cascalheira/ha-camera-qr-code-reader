@@ -33,8 +33,12 @@ Service → client:
 { "type": "error", "message": "…" }
 ```
 
-The service debounces repeats (same payload within 3 s) and reconnects to the
-camera on its own with backoff.
+The service always decodes the **most recent** frame (dropping stale ones) and
+runs ffmpeg with low-latency flags, so detections are reported with minimal
+delay. Frames are decoded grayscale; if a frame fails, it retries with
+histogram equalization and then local adaptive thresholding to handle banding,
+glare and uneven lighting. It debounces repeats (same payload within 3 s) and
+reconnects to the camera on its own with backoff.
 
 ## Configuration (environment)
 

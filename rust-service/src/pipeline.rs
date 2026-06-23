@@ -7,8 +7,7 @@ use std::time::{Duration, Instant};
 
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
-use tokio::sync::mpsc;
-use tokio::task::JoinSet;
+use tokio::sync::{mpsc, watch};
 
 use crate::protocol::ServerMsg;
 use crate::qr;
@@ -76,6 +75,8 @@ async fn run_once(
 ) -> anyhow::Result<()> {
     let mut cmd = Command::new(&cfg.ffmpeg);
     cmd.arg("-nostdin").arg("-loglevel").arg("error");
+    // Low-latency input: don't buffer, don't hold a decoder reorder queue.
+    cmd.arg("-fflags").arg("nobuffer").arg("-flags").arg("low_delay");
     if let Some(hw) = &cfg.hwaccel {
         cmd.arg("-hwaccel").arg(hw);
         if let Some(dev) = &cfg.hwaccel_device {
@@ -106,29 +107,43 @@ async fn run_once(
             cfg.ffmpeg
         )
     })?;
-    let mut stdout = child
+    let stdout = child
         .stdout
         .take()
         .ok_or_else(|| anyhow::anyhow!("ffmpeg produced no stdout"))?;
 
-    // Decode frames concurrently across the blocking pool so detection uses all
-    // cores; cap in-flight work so we don't build an unbounded backlog.
-    let max_decode = std::thread::available_parallelism()
-        .map(|n| n.get().min(8))
-        .unwrap_or(4);
+    // A reader task keeps only the most recent frame; the decoder always grabs
+    // the freshest one and drops stale frames, so latency never accumulates.
+    let (frame_tx, mut frame_rx) = watch::channel::<Option<Vec<u8>>>(None);
+    let reader = tokio::spawn(async move {
+        let mut stdout = stdout;
+        let mut buffer: Vec<u8> = Vec::with_capacity(1 << 20);
+        let mut chunk = vec![0u8; READ_CHUNK];
+        loop {
+            match stdout.read(&mut chunk).await {
+                Ok(0) | Err(_) => break, // ffmpeg exited
+                Ok(n) => {
+                    buffer.extend_from_slice(&chunk[..n]);
+                    for frame in extract_frames(&mut buffer) {
+                        // Overwrite: the decoder only ever sees the latest frame.
+                        let _ = frame_tx.send(Some(frame));
+                    }
+                }
+            }
+        }
+        // Dropping frame_tx closes the channel, ending the decoder loop.
+    });
 
-    let mut buffer: Vec<u8> = Vec::with_capacity(1 << 20);
-    let mut chunk = vec![0u8; READ_CHUNK];
     let mut last_seen: HashMap<String, Instant> = HashMap::new();
-    let mut decoding: JoinSet<Vec<String>> = JoinSet::new();
     let mut last_status = Instant::now();
     let mut streaming = false;
 
     let result = loop {
-        let read = match stdout.read(&mut chunk).await {
-            Ok(0) => break Ok(()), // ffmpeg exited
-            Ok(n) => n,
-            Err(err) => break Err(anyhow::Error::from(err)),
+        if frame_rx.changed().await.is_err() {
+            break Ok(()); // reader ended (ffmpeg exited)
+        }
+        let Some(frame) = frame_rx.borrow_and_update().clone() else {
+            continue;
         };
 
         if !streaming {
@@ -142,23 +157,11 @@ async fn run_once(
                 .await;
         }
 
-        buffer.extend_from_slice(&chunk[..read]);
-        for frame in extract_frames(&mut buffer) {
-            *frames += 1;
-            // Backpressure: wait for a slot when the pool is saturated.
-            while decoding.len() >= max_decode {
-                if let Some(res) = decoding.join_next().await {
-                    emit_codes(res.unwrap_or_default(), &mut last_seen, cfg.cooldown, tx)
-                        .await;
-                }
-            }
-            decoding.spawn_blocking(move || qr::decode_qr(&frame));
-        }
-
-        // Reap whatever finished, without blocking.
-        while let Some(res) = decoding.try_join_next() {
-            emit_codes(res.unwrap_or_default(), &mut last_seen, cfg.cooldown, tx).await;
-        }
+        *frames += 1;
+        let codes = tokio::task::spawn_blocking(move || qr::decode_qr(&frame))
+            .await
+            .unwrap_or_default();
+        emit_codes(codes, &mut last_seen, cfg.cooldown, tx).await;
 
         if tx.is_closed() {
             break Ok(());
@@ -175,10 +178,7 @@ async fn run_once(
         }
     };
 
-    // Drain in-flight decodes before tearing down.
-    while let Some(res) = decoding.join_next().await {
-        emit_codes(res.unwrap_or_default(), &mut last_seen, cfg.cooldown, tx).await;
-    }
+    reader.abort();
     let _ = child.kill().await;
     result
 }
