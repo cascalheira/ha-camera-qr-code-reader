@@ -1,0 +1,13 @@
+{
+  "domain": "qr_rtsp",
+  "name": "QR Code RTSP Reader",
+  "codeowners": ["@cascalheira"],
+  "config_flow": true,
+  "dependencies": ["ffmpeg"],
+  "documentation": "https://github.com/cascalheira/ha-camera-qr-code-reader",
+  "integration_type": "service",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/cascalheira/ha-camera-qr-code-reader/issues",
+  "requirements": ["pyzbar==0.1.9", "qrcode==7.4.2"],
+  "version": "0.1.0"
+}

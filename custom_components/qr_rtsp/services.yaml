@@ -1,0 +1,71 @@
+generate_code:
+  name: Generate QR code
+  description: >-
+    Create a secure random QR code with payload
+    "ha-camera-qr-code-reader|<name>|<random>", save it as a downloadable PNG,
+    and optionally register it as an access rule on a device.
+  fields:
+    name:
+      name: Name
+      description: Friendly name embedded in the payload (must not contain "|").
+      required: true
+      example: guest-weekend
+      selector:
+        text:
+    entropy_bytes:
+      name: Complexity
+      description: Bytes of randomness. 16 = 128 bits (recommended). Higher = stronger but denser code.
+      default: 16
+      selector:
+        number:
+          min: 8
+          max: 64
+          unit_of_measurement: bytes
+          mode: slider
+    register:
+      name: Register as access rule
+      description: Also store this code as a rule on the selected device(s), with the validity below.
+      default: false
+      selector:
+        boolean:
+    device_id:
+      name: Device(s)
+      description: QR Code RTSP Reader device(s) to register the rule on (required when registering).
+      selector:
+        device:
+          integration: qr_rtsp
+          multiple: true
+    valid_from:
+      name: Valid from
+      description: First day the code is valid (inclusive).
+      selector:
+        date:
+    valid_until:
+      name: Valid until
+      description: Last day the code is valid (inclusive).
+      selector:
+        date:
+    weekdays:
+      name: Allowed weekdays
+      description: Days the code is valid. Empty = every day.
+      selector:
+        select:
+          multiple: true
+          options:
+            - { value: mon, label: Monday }
+            - { value: tue, label: Tuesday }
+            - { value: wed, label: Wednesday }
+            - { value: thu, label: Thursday }
+            - { value: fri, label: Friday }
+            - { value: sat, label: Saturday }
+            - { value: sun, label: Sunday }
+    start_time:
+      name: Allowed from (time)
+      description: Start of the daily time window.
+      selector:
+        time:
+    end_time:
+      name: Allowed until (time)
+      description: End of the daily time window (may wrap past midnight).
+      selector:
+        time:

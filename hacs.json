@@ -1,0 +1,5 @@
+{
+  "name": "QR Code RTSP Reader",
+  "render_readme": true,
+  "homeassistant": "2024.12.0"
+}

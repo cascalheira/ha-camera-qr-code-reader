@@ -1,0 +1,86 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "QR Code RTSP Reader",
+        "description": "Point this at a camera RTSP stream (preferably a low-resolution substream).",
+        "data": {
+          "name": "Name",
+          "stream_url": "RTSP stream URL",
+          "rtsp_transport": "RTSP transport",
+          "fps": "Frames per second to scan",
+          "width": "Downscale width (px, 0 = original)",
+          "cooldown": "Re-trigger cooldown (seconds)"
+        }
+      }
+    },
+    "error": {
+      "invalid_url": "URL must start with rtsp://, rtsps://, http:// or https://"
+    },
+    "abort": {
+      "already_configured": "This stream is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "QR Code RTSP Reader",
+        "menu_options": {
+          "general": "General settings",
+          "add_rule": "Add a QR access rule",
+          "manage_rules": "Edit / delete a rule"
+        }
+      },
+      "general": {
+        "title": "General settings",
+        "data": {
+          "rtsp_transport": "RTSP transport",
+          "fps": "Frames per second to scan",
+          "width": "Downscale width (px, 0 = original)",
+          "cooldown": "Re-trigger cooldown (seconds)",
+          "default_allow_unlisted": "Authorize codes that have no rule"
+        }
+      },
+      "add_rule": {
+        "title": "Add a QR access rule",
+        "description": "Bind a QR payload to a validity window. Leave a field empty to leave it unrestricted.",
+        "data": {
+          "payload": "QR payload (exact text in the code)",
+          "name": "Friendly name (optional)",
+          "valid_from": "Valid from (date)",
+          "valid_until": "Valid until (date, inclusive)",
+          "weekdays": "Allowed weekdays",
+          "start_time": "Allowed from (time of day)",
+          "end_time": "Allowed until (time of day)"
+        }
+      },
+      "manage_rules": {
+        "title": "Edit / delete a rule",
+        "data": {
+          "rule": "Rule"
+        }
+      },
+      "edit_rule": {
+        "title": "Edit rule",
+        "description": "Change the rule, or tick Delete to remove it. Leave a field empty to leave it unrestricted.",
+        "data": {
+          "payload": "QR payload (exact text in the code)",
+          "name": "Friendly name (optional)",
+          "valid_from": "Valid from (date)",
+          "valid_until": "Valid until (date, inclusive)",
+          "weekdays": "Allowed weekdays",
+          "start_time": "Allowed from (time of day)",
+          "end_time": "Allowed until (time of day)",
+          "delete": "Delete this rule"
+        }
+      }
+    },
+    "error": {
+      "payload_required": "A QR payload is required.",
+      "invalid_dates": "\"Valid until\" is before \"Valid from\"."
+    },
+    "abort": {
+      "no_rules": "No rules defined yet — add one first."
+    }
+  }
+}
