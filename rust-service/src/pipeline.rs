@@ -27,6 +27,7 @@ pub struct StreamConfig {
     pub width: u32,
     pub ffmpeg: String,
     pub hwaccel: Option<String>,
+    pub hwaccel_device: Option<String>,
     pub cooldown: Duration,
 }
 
@@ -77,6 +78,9 @@ async fn run_once(
     cmd.arg("-nostdin").arg("-loglevel").arg("error");
     if let Some(hw) = &cfg.hwaccel {
         cmd.arg("-hwaccel").arg(hw);
+        if let Some(dev) = &cfg.hwaccel_device {
+            cmd.arg("-hwaccel_device").arg(dev);
+        }
     }
     cmd.arg("-rtsp_transport")
         .arg(&cfg.rtsp_transport)

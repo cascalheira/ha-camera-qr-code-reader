@@ -33,6 +33,7 @@ struct AppState {
     secret: Arc<String>,
     ffmpeg: String,
     hwaccel: Option<String>,
+    hwaccel_device: Option<String>,
 }
 
 #[tokio::main]
@@ -52,11 +53,15 @@ async fn main() -> anyhow::Result<()> {
     let bind = std::env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8723".into());
     let ffmpeg = std::env::var("FFMPEG_PATH").unwrap_or_else(|_| "ffmpeg".into());
     let hwaccel = std::env::var("FFMPEG_HWACCEL").ok().filter(|s| !s.is_empty());
+    let hwaccel_device = std::env::var("FFMPEG_HWACCEL_DEVICE")
+        .ok()
+        .filter(|s| !s.is_empty());
 
     let state = AppState {
         secret: Arc::new(secret),
         ffmpeg,
         hwaccel,
+        hwaccel_device,
     };
 
     // Probe ffmpeg up front so a missing binary is obvious at startup.
@@ -132,6 +137,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                         width,
                         ffmpeg: state.ffmpeg.clone(),
                         hwaccel: state.hwaccel.clone(),
+                        hwaccel_device: state.hwaccel_device.clone(),
                         cooldown: DEFAULT_COOLDOWN,
                     };
                 }

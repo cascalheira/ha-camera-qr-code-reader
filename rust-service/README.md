@@ -43,7 +43,8 @@ camera on its own with backoff.
 | `QR_SERVICE_SECRET` | – | **Required**, ≥16 chars. Must match the integration's "Secret key". |
 | `BIND_ADDR` | `0.0.0.0:8723` | Listen address. |
 | `FFMPEG_PATH` | `ffmpeg` | Path to ffmpeg. |
-| `FFMPEG_HWACCEL` | – | Optional `-hwaccel` value: `cuda` / `qsv` / `vaapi`. |
+| `FFMPEG_HWACCEL` | – | Optional `-hwaccel`: `vaapi` (AMD/Intel), `cuda` (NVIDIA), `qsv` (Intel). |
+| `FFMPEG_HWACCEL_DEVICE` | – | Render node for VAAPI, e.g. `/dev/dri/renderD128`. |
 | `RUST_LOG` | `info` | Log filter. |
 
 See [`.env.example`](.env.example).
@@ -71,9 +72,23 @@ Remote**, **Service URL = `ws://<vm-host>:8723/ws`**, and the same **Secret key*
 ## GPU passthrough (Proxmox)
 
 1. Pass the GPU into the VM (PCIe passthrough).
-2. Use a runtime image whose ffmpeg has hardware decode (e.g. NVIDIA: an
-   `nvidia/cuda` base with a cuda-enabled ffmpeg), run with `--gpus all`.
-3. Set `FFMPEG_HWACCEL=cuda`.
+2. Pick the right `-hwaccel` for your hardware:
+
+   **AMD or Intel (Linux → VAAPI):**
+   ```bash
+   docker run -d --name qr-vision -p 8723:8723 \
+     --device /dev/dri \
+     -e QR_SERVICE_SECRET=… \
+     -e FFMPEG_HWACCEL=vaapi \
+     -e FFMPEG_HWACCEL_DEVICE=/dev/dri/renderD128 \
+     qr-vision-service
+   ```
+   The Debian-based image already ships an ffmpeg with VAAPI; you only need the
+   `/dev/dri` device passed in (and the AMD/Intel kernel driver + Mesa on the
+   host). Check the node with `ls /dev/dri` (usually `renderD128`).
+
+   **NVIDIA (CUDA):** base the image on a cuda-enabled ffmpeg, run with
+   `--gpus all`, and set `FFMPEG_HWACCEL=cuda`.
 
 The protocol and integration are unchanged — only decode moves to the GPU. GPU
 matters most for the planned **people detection** (ML inference), which will be
