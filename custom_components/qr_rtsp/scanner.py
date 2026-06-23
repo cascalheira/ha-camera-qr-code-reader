@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections import deque
 from collections.abc import Callable
 from io import BytesIO
 
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,6 +26,14 @@ _JPEG_EOI = b"\xff\xd9"
 
 _READ_CHUNK = 65536
 _MAX_BACKOFF = 30
+
+# Mask credentials in rtsp://user:pass@host for display.
+_CREDS_RE = re.compile(r"://([^:/@]+):([^@/]+)@")
+
+
+def _redact_url(url: str) -> str:
+    """Hide the password in a stream URL for safe display."""
+    return _CREDS_RE.sub(r"://\1:***@", url)
 
 
 def _decode_frame(jpeg: bytes) -> list[tuple[str, str]]:
@@ -79,6 +89,26 @@ class QrStreamScanner:
         self._last_seen: dict[str, float] = {}
         self._stderr_tail: deque[str] = deque(maxlen=10)
 
+        # Status, surfaced to the admin panel.
+        self._state = "starting"  # starting|connecting|streaming|reconnecting|stopped
+        self._connected = False
+        self._frames = 0
+        self._last_frame = None
+        self._last_error: str | None = None
+
+    @property
+    def status(self) -> dict:
+        """Current scanner status for the admin panel."""
+        return {
+            "state": self._state,
+            "connected": self._connected,
+            "frames": self._frames,
+            "last_frame": self._last_frame.isoformat() if self._last_frame else None,
+            "last_error": self._last_error,
+            "fps": self._fps,
+            "url": _redact_url(self._url),
+        }
+
     def _build_args(self) -> list[str]:
         """Build the ffmpeg command line."""
         vf = f"fps={self._fps}"
@@ -115,6 +145,8 @@ class QrStreamScanner:
     async def async_stop(self) -> None:
         """Stop the supervisor and tear down ffmpeg."""
         self._closing = True
+        self._state = "stopped"
+        self._connected = False
         await self._terminate_proc()
         if self._task:
             self._task.cancel()
@@ -142,18 +174,25 @@ class QrStreamScanner:
         """Supervisor loop: (re)connect to the stream with exponential backoff."""
         backoff = 1
         while not self._closing:
+            self._state = "connecting"
+            self._connected = False
             try:
                 await self._run_once()
                 backoff = 1
             except asyncio.CancelledError:
                 raise
             except Exception as err:  # noqa: BLE0001 - keep the supervisor alive
+                self._last_error = str(err)
                 _LOGGER.warning("QR RTSP stream error: %s", err)
             finally:
                 await self._terminate_proc()
+                self._connected = False
 
             if self._closing:
                 break
+            self._state = "reconnecting"
+            if self._stderr_tail:
+                self._last_error = self._stderr_tail[-1]
             tail = "; ".join(self._stderr_tail)
             _LOGGER.debug(
                 "Reconnecting to %s in %ss%s",
@@ -172,7 +211,11 @@ class QrStreamScanner:
             stderr=asyncio.subprocess.PIPE,
         )
         assert self._proc.stdout is not None
-        stderr_task = self.hass.async_create_task(self._drain_stderr())
+        # Background task: long-running, must NOT block HA's startup completion
+        # (a tracked async_create_task here never finishes and stalls startup).
+        stderr_task = self.hass.async_create_background_task(
+            self._drain_stderr(), name=f"qr_rtsp ffmpeg stderr {self._url}"
+        )
 
         buffer = bytearray()
         try:
@@ -180,6 +223,10 @@ class QrStreamScanner:
                 chunk = await self._proc.stdout.read(_READ_CHUNK)
                 if not chunk:
                     break  # ffmpeg exited; supervisor will reconnect
+                if not self._connected:
+                    self._state = "streaming"
+                    self._connected = True
+                    self._last_error = None
                 buffer.extend(chunk)
                 for frame in _extract_frames(buffer):
                     await self._process_frame(frame)
@@ -201,6 +248,8 @@ class QrStreamScanner:
 
     async def _process_frame(self, frame: bytes) -> None:
         """Decode a frame and dispatch any new payloads."""
+        self._frames += 1
+        self._last_frame = dt_util.utcnow()
         codes = await self.hass.async_add_executor_job(_decode_frame, frame)
         if not codes:
             return

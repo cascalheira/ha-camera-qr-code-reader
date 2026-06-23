@@ -55,6 +55,17 @@ sidebar. It's a full management UI (backed by a WebSocket API) where you can:
   validity/script, and **download the QR PNG** right from the dialog.
 - **Edit / delete** codes.
 
+It also shows:
+
+- **Live status** — a bar at the top reports whether the stream is
+  `Streaming` / `Connecting` / `Reconnecting` / `Stopped`, how long ago the last
+  frame arrived, total frames decoded, and the last ffmpeg error (with the
+  password redacted from the URL). It refreshes every few seconds, so you can
+  confirm the scanner is actually working.
+- **History** — a persisted audit log of recent scans (newest first): when,
+  which code, authorized/denied, and the reason. Survives restarts (kept in
+  `.storage`, last 200 per reader) and can be cleared from the UI.
+
 Rule edits apply live — they do **not** restart the camera stream. (Changing
 stream settings like FPS/URL still reloads, as it must.)
 
@@ -75,6 +86,10 @@ Payload format:
 ```
 ha-camera-qr-code-reader|<your name>|<random token>
 ```
+
+The generated PNG is **captioned** with the code's title (or name) underneath,
+so a printed code is identifiable at a glance. Captions render with a bundled
+font that covers accented characters (see `custom_components/qr_rtsp/fonts/`).
 
 The random token comes from Python's `secrets` (cryptographically secure) and
 is URL-safe, so it never collides with the `|` separator. **Complexity** is the

@@ -21,7 +21,10 @@ class QrRtspPanel extends HTMLElement {
     this._entries = [];
     this._entryId = null;
     this._rules = [];
+    this._history = [];
+    this._tab = "codes";
     this._ready = false;
+    this._statusTimer = null;
   }
 
   set hass(hass) {
@@ -36,6 +39,10 @@ class QrRtspPanel extends HTMLElement {
     return this._hass;
   }
 
+  disconnectedCallback() {
+    if (this._statusTimer) clearInterval(this._statusTimer);
+  }
+
   async _init() {
     try {
       const { entries } = await this._hass.callWS({ type: "qr_rtsp/entries" });
@@ -43,15 +50,23 @@ class QrRtspPanel extends HTMLElement {
       this._entryId = this._entries.length ? this._entries[0].entry_id : null;
       this._renderHeader();
       await this._loadRules();
+      this._refreshStatus();
+      this._statusTimer = setInterval(() => this._refreshStatus(), 5000);
     } catch (err) {
       this._toast(`Failed to load: ${err.message || err}`, true);
     }
   }
 
+  async _onEntryChange() {
+    this._refreshStatus();
+    if (this._tab === "history") await this._loadHistory();
+    else await this._loadRules();
+  }
+
   async _loadRules() {
     if (!this._entryId) {
       this._rules = [];
-      this._renderTable();
+      this._renderContent();
       return;
     }
     const { rules } = await this._hass.callWS({
@@ -59,7 +74,71 @@ class QrRtspPanel extends HTMLElement {
       entry_id: this._entryId,
     });
     this._rules = rules || [];
-    this._renderTable();
+    if (this._tab === "codes") this._renderContent();
+  }
+
+  async _loadHistory() {
+    if (!this._entryId) {
+      this._history = [];
+      this._renderContent();
+      return;
+    }
+    const { events } = await this._hass.callWS({
+      type: "qr_rtsp/history/list",
+      entry_id: this._entryId,
+    });
+    this._history = events || [];
+    if (this._tab === "history") this._renderContent();
+  }
+
+  /* ---------- status ---------- */
+
+  async _refreshStatus() {
+    if (!this._entryId) return;
+    try {
+      const s = await this._hass.callWS({
+        type: "qr_rtsp/status",
+        entry_id: this._entryId,
+      });
+      this._renderStatus(s);
+    } catch (err) {
+      /* transient; leave previous status */
+    }
+  }
+
+  _renderStatus(s) {
+    const el = this.shadowRoot.getElementById("status");
+    if (!el) return;
+    const map = {
+      streaming: ["#43a047", "Streaming"],
+      connecting: ["#fb8c00", "Connecting…"],
+      starting: ["#fb8c00", "Starting…"],
+      reconnecting: ["#e53935", "Reconnecting…"],
+      stopped: ["#9e9e9e", "Stopped"],
+    };
+    const [color, label] = map[s.state] || ["#9e9e9e", s.state || "Unknown"];
+    const ago = s.last_frame ? this._ago(s.last_frame) : "—";
+    el.innerHTML = `
+      <span class="dot" style="background:${color}"></span>
+      <b>${esc(label)}</b>
+      <span class="muted">· last frame ${esc(ago)} · ${s.frames || 0} frames${
+      s.fps ? ` · ${s.fps} fps` : ""
+    }</span>
+      ${
+        s.url ? `<div class="muted small mono">${esc(s.url)}</div>` : ""
+      }
+      ${
+        s.last_error
+          ? `<div class="small err">${esc(s.last_error)}</div>`
+          : ""
+      }`;
+  }
+
+  _ago(iso) {
+    const secs = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+    if (secs < 60) return `${Math.round(secs)}s ago`;
+    if (secs < 3600) return `${Math.round(secs / 60)}m ago`;
+    return `${Math.round(secs / 3600)}h ago`;
   }
 
   /* ---------- rendering ---------- */
@@ -72,16 +151,38 @@ class QrRtspPanel extends HTMLElement {
           <h1>QR Codes</h1>
           <div id="header-right"></div>
         </div>
+        <div class="statusbar" id="status"><span class="muted">Loading status…</span></div>
+        <div class="tabs">
+          <button class="tab active" data-tab="codes">Codes</button>
+          <button class="tab" data-tab="history">History</button>
+        </div>
         <div class="card">
-          <div id="table"></div>
+          <div id="content"></div>
         </div>
       </div>
       <div id="modal-root"></div>
       <div id="toast" class="toast"></div>
     `;
-    this.shadowRoot
-      .getElementById("table")
-      .addEventListener("click", (e) => this._onTableClick(e));
+    const content = this.shadowRoot.getElementById("content");
+    content.addEventListener("click", (e) => this._onContentClick(e));
+    this.shadowRoot.querySelectorAll(".tab").forEach((t) => {
+      t.onclick = () => this._switchTab(t.dataset.tab);
+    });
+  }
+
+  async _switchTab(tab) {
+    if (tab === this._tab) return;
+    this._tab = tab;
+    this.shadowRoot.querySelectorAll(".tab").forEach((t) => {
+      t.classList.toggle("active", t.dataset.tab === tab);
+    });
+    if (tab === "history") await this._loadHistory();
+    else this._renderContent();
+  }
+
+  _renderContent() {
+    if (this._tab === "history") this._renderHistory();
+    else this._renderCodes();
   }
 
   _renderHeader() {
@@ -106,7 +207,7 @@ class QrRtspPanel extends HTMLElement {
     if (sel)
       sel.addEventListener("change", (e) => {
         this._entryId = e.target.value;
-        this._loadRules();
+        this._onEntryChange();
       });
     this.shadowRoot.getElementById("btn-add").onclick = () =>
       this._openRuleDialog(null);
@@ -114,8 +215,8 @@ class QrRtspPanel extends HTMLElement {
       this._openGenerateDialog();
   }
 
-  _renderTable() {
-    const el = this.shadowRoot.getElementById("table");
+  _renderCodes() {
+    const el = this.shadowRoot.getElementById("content");
     if (!this._entryId) {
       el.innerHTML = `<p class="empty">No QR Code RTSP Reader is configured yet.</p>`;
       return;
@@ -150,7 +251,48 @@ class QrRtspPanel extends HTMLElement {
       </table>`;
   }
 
-  _onTableClick(e) {
+  _renderHistory() {
+    const el = this.shadowRoot.getElementById("content");
+    if (!this._entryId) {
+      el.innerHTML = `<p class="empty">No QR Code RTSP Reader is configured yet.</p>`;
+      return;
+    }
+    if (!this._history.length) {
+      el.innerHTML = `<p class="empty">No scans recorded yet.</p>`;
+      return;
+    }
+    const rows = this._history
+      .map((e) => {
+        const when = e.ts ? new Date(e.ts).toLocaleString() : "—";
+        const label = e.title || e.name || this._shortPayload(e.payload);
+        const badge = e.authorized
+          ? `<span class="badge ok">authorized</span>`
+          : `<span class="badge no">denied</span>`;
+        return `<tr>
+          <td class="muted small">${esc(when)}</td>
+          <td>${esc(label)}</td>
+          <td>${badge}</td>
+          <td class="muted small">${esc(e.reason || "")}</td>
+        </tr>`;
+      })
+      .join("");
+    el.innerHTML = `
+      <div class="hist-head">
+        <span class="muted small">${this._history.length} most recent scans</span>
+        <button class="btn ghost" data-hist="clear">Clear history</button>
+      </div>
+      <table>
+        <thead><tr><th>When</th><th>Code</th><th>Result</th><th>Reason</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  _onContentClick(e) {
+    const hist = e.target.closest("button[data-hist]");
+    if (hist) {
+      this._confirmClearHistory();
+      return;
+    }
     const btn = e.target.closest("button[data-act]");
     if (!btn) return;
     const rule = this._rules.find((r) => r.payload === btn.dataset.p);
@@ -158,6 +300,30 @@ class QrRtspPanel extends HTMLElement {
     if (btn.dataset.act === "edit") this._openRuleDialog(rule);
     else if (btn.dataset.act === "qr") this._showQr(rule);
     else this._confirmDelete(rule);
+  }
+
+  _confirmClearHistory() {
+    this._modal(
+      "Clear history",
+      `<p>Delete all recorded scans for this reader?</p>`,
+      `<button class="btn ghost" id="d-cancel">Cancel</button>
+       <button class="btn danger" id="d-clear">Clear</button>`
+    );
+    this.shadowRoot.getElementById("d-cancel").onclick = () => this._closeModal();
+    this.shadowRoot.getElementById("d-clear").onclick = async () => {
+      try {
+        const { events } = await this._hass.callWS({
+          type: "qr_rtsp/history/clear",
+          entry_id: this._entryId,
+        });
+        this._history = events || [];
+        this._renderContent();
+        this._closeModal();
+        this._toast("History cleared");
+      } catch (err) {
+        this._toast(err.message || String(err), true);
+      }
+    };
   }
 
   async _showQr(rule) {
@@ -373,7 +539,7 @@ class QrRtspPanel extends HTMLElement {
         if (existing && existing.payload) msg.original_payload = existing.payload;
         const { rules } = await this._hass.callWS(msg);
         this._rules = rules;
-        this._renderTable();
+        this._renderContent();
         this._closeModal();
         this._toast("Saved");
       } catch (err) {
@@ -420,7 +586,7 @@ class QrRtspPanel extends HTMLElement {
           rule,
         });
         this._rules = res.rules;
-        this._renderTable();
+        this._renderContent();
         const url = `data:image/png;base64,${res.image_b64}`;
         sr.getElementById("gen-result").innerHTML = `
           <div class="result">
@@ -456,7 +622,7 @@ class QrRtspPanel extends HTMLElement {
           payload: rule.payload,
         });
         this._rules = rules;
-        this._renderTable();
+        this._renderContent();
         this._closeModal();
         this._toast("Deleted");
       } catch (err) {
@@ -481,6 +647,20 @@ const STYLES = `
   .bar { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
   h1 { font-size: 22px; margin: 8px 0 16px; }
   #header-right { display:flex; gap:8px; align-items:center; }
+  .statusbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin: 4px 0 14px;
+               background: var(--card-background-color,#fff); border-radius:10px; padding:10px 14px;
+               box-shadow: var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,.12)); }
+  .statusbar .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+  .statusbar .err { color: var(--error-color,#db4437); flex-basis:100%; }
+  .statusbar .mono { flex-basis:100%; }
+  .tabs { display:flex; gap:4px; margin-bottom:10px; }
+  .tab { background:transparent; border:none; border-bottom:2px solid transparent; cursor:pointer;
+         padding:8px 14px; font-size:14px; color: var(--secondary-text-color); }
+  .tab.active { color: var(--primary-color); border-bottom-color: var(--primary-color); font-weight:600; }
+  .badge { font-size:12px; padding:2px 8px; border-radius:10px; }
+  .badge.ok { background: rgba(67,160,71,.15); color: var(--success-color,#43a047); }
+  .badge.no { background: rgba(219,68,55,.15); color: var(--error-color,#db4437); }
+  .hist-head { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; }
   .card { background: var(--card-background-color, #fff); border-radius: 12px;
           box-shadow: var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,.12)); padding: 8px; }
   table { width:100%; border-collapse: collapse; }

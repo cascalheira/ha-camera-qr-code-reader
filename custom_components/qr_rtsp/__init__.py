@@ -39,6 +39,7 @@ from .const import (
     RULE_TITLE,
     SIGNAL_UPDATE,
 )
+from .history import ScanHistory
 from .panel import async_register_panel, async_remove_panel
 from .rules import evaluate, find_rule
 from .scanner import QrStreamScanner
@@ -84,6 +85,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: QrRtspConfigEntry) -> bo
     options = {**entry.data, **entry.options}
     name = options.get(CONF_NAME, DEFAULT_NAME)
 
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    if "history" not in domain_data:
+        history = ScanHistory(hass)
+        await history.async_load()
+        domain_data["history"] = history
+    history = domain_data["history"]
+
     data = QrRtspData(scanner_signature=_scanner_signature(entry))
     entry.runtime_data = data
 
@@ -114,6 +122,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: QrRtspConfigEntry) -> bo
         data.last_authorized = authorized
         data.last_reason = reason
         data.last_rule = rule_name
+
+        history.add(
+            entry.entry_id,
+            {
+                "ts": data.last_scanned.isoformat(),
+                "payload": payload,
+                "name": rule_name,
+                "title": rule_title,
+                "type": symbol_type,
+                "authorized": authorized,
+                "reason": reason,
+            },
+        )
 
         hass.bus.async_fire(
             EVENT_QR_SCANNED,
@@ -179,6 +200,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: QrRtspConfigEntry) -> b
         async_unload_services(hass)
         async_remove_panel(hass)
     return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: QrRtspConfigEntry) -> None:
+    """Drop the entry's scan history when it is deleted."""
+    history = hass.data.get(DOMAIN, {}).get("history")
+    if history:
+        history.clear(entry.entry_id)
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: QrRtspConfigEntry) -> None:

@@ -18,6 +18,7 @@ from .const import (
     MIN_ENTROPY_BYTES,
     RULE_NAME,
     RULE_PAYLOAD,
+    RULE_TITLE,
 )
 from .rules import find_rule, normalize_rule
 from .services import async_create_code, async_render_png
@@ -35,7 +36,15 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_delete_rule)
     websocket_api.async_register_command(hass, ws_generate)
     websocket_api.async_register_command(hass, ws_image)
+    websocket_api.async_register_command(hass, ws_status)
+    websocket_api.async_register_command(hass, ws_history)
+    websocket_api.async_register_command(hass, ws_history_clear)
     data["ws_registered"] = True
+
+
+def _history(hass: HomeAssistant):
+    """Return the shared scan-history store, if loaded."""
+    return hass.data.get(DOMAIN, {}).get("history")
 
 
 def _get_entry(hass: HomeAssistant, entry_id: str):
@@ -164,8 +173,11 @@ async def ws_generate(hass, connection, msg) -> None:
     if entry is None:
         connection.send_error(msg["id"], "not_found", "Unknown entry")
         return
+    caption = (msg.get("rule") or {}).get(RULE_TITLE) or msg["name"]
     try:
-        result = await async_create_code(hass, msg["name"], msg["entropy_bytes"])
+        result = await async_create_code(
+            hass, msg["name"], msg["entropy_bytes"], caption=caption
+        )
     except ValueError as err:
         connection.send_error(msg["id"], "invalid_format", str(err))
         return
@@ -198,8 +210,61 @@ async def ws_image(hass, connection, msg) -> None:
     if entry is None:
         connection.send_error(msg["id"], "not_found", "Unknown entry")
         return
-    if find_rule(entry.options.get(CONF_RULES, []), msg["payload"]) is None:
+    rule = find_rule(entry.options.get(CONF_RULES, []), msg["payload"])
+    if rule is None:
         connection.send_error(msg["id"], "not_found", "Unknown code")
         return
-    image_b64 = await async_render_png(hass, msg["payload"])
+    caption = rule.get(RULE_TITLE) or rule.get(RULE_NAME) or msg["payload"]
+    image_b64 = await async_render_png(hass, msg["payload"], caption)
     connection.send_result(msg["id"], {"image_b64": image_b64})
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/status",
+        vol.Required("entry_id"): str,
+    }
+)
+@callback
+def ws_status(hass, connection, msg) -> None:
+    """Return the live scanner status for an entry."""
+    entry = _get_entry(hass, msg["entry_id"])
+    scanner = getattr(getattr(entry, "runtime_data", None), "scanner", None)
+    if scanner is None:
+        connection.send_result(
+            msg["id"], {"state": "stopped", "connected": False}
+        )
+        return
+    connection.send_result(msg["id"], scanner.status)
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/history/list",
+        vol.Required("entry_id"): str,
+    }
+)
+@callback
+def ws_history(hass, connection, msg) -> None:
+    """Return the scan history for an entry (newest first)."""
+    history = _history(hass)
+    events = history.get(msg["entry_id"]) if history else []
+    connection.send_result(msg["id"], {"events": events})
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/history/clear",
+        vol.Required("entry_id"): str,
+    }
+)
+@callback
+def ws_history_clear(hass, connection, msg) -> None:
+    """Clear the scan history for an entry."""
+    history = _history(hass)
+    if history:
+        history.clear(msg["entry_id"])
+    connection.send_result(msg["id"], {"events": []})

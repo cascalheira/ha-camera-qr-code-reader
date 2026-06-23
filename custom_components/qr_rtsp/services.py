@@ -6,6 +6,7 @@ import base64
 import logging
 import secrets
 from io import BytesIO
+from pathlib import Path
 from typing import Any
 
 import voluptuous as vol
@@ -71,11 +72,12 @@ _GENERATE_SCHEMA = vol.Schema(
 
 
 async def async_create_code(
-    hass: HomeAssistant, name: str, entropy_bytes: int
+    hass: HomeAssistant, name: str, entropy_bytes: int, caption: str | None = None
 ) -> dict[str, Any]:
     """Build a secure payload, render its PNG, and return the details.
 
-    Raises ValueError if the name is invalid.
+    The PNG is captioned with `caption` (falling back to the name) so a printed
+    code is identifiable. Raises ValueError if the name is invalid.
     """
     name = (name or "").strip()
     if not name or PAYLOAD_SEPARATOR in name or "\n" in name:
@@ -90,13 +92,15 @@ async def async_create_code(
         "name": name,
         "random": token,
         # base64 PNG — delivered only over authenticated channels, never to /www.
-        "image_b64": await async_render_png(hass, payload),
+        "image_b64": await async_render_png(hass, payload, caption or name),
     }
 
 
-async def async_render_png(hass: HomeAssistant, payload: str) -> str:
-    """Render a QR code PNG and return it base64-encoded."""
-    return await hass.async_add_executor_job(_render_png_b64, payload)
+async def async_render_png(
+    hass: HomeAssistant, payload: str, caption: str | None = None
+) -> str:
+    """Render a QR code PNG (with an optional caption) base64-encoded."""
+    return await hass.async_add_executor_job(_render_png_b64, payload, caption)
 
 
 @callback
@@ -108,7 +112,10 @@ def async_setup_services(hass: HomeAssistant) -> None:
     async def _handle_generate(call: ServiceCall) -> ServiceResponse:
         try:
             result = await async_create_code(
-                hass, call.data[ATTR_NAME], call.data[ATTR_ENTROPY]
+                hass,
+                call.data[ATTR_NAME],
+                call.data[ATTR_ENTROPY],
+                caption=call.data.get(RULE_TITLE),
             )
         except ValueError as err:
             raise ServiceValidationError(str(err)) from err
@@ -149,12 +156,67 @@ def async_unload_services(hass: HomeAssistant) -> None:
     hass.services.async_remove(DOMAIN, SERVICE_GENERATE)
 
 
-def _render_png_b64(payload: str) -> str:
-    """Render the QR code to a base64 PNG string. Runs in the executor."""
+_FONT_PATH = Path(__file__).parent / "fonts" / "DejaVuSans.ttf"
+
+
+def _load_font(size: int):
+    """Load the bundled font (full Latin coverage), with safe fallbacks."""
+    from PIL import ImageFont  # noqa: PLC0415
+
+    try:
+        return ImageFont.truetype(str(_FONT_PATH), size)
+    except OSError:
+        try:
+            return ImageFont.load_default(size=size)
+        except TypeError:  # Pillow < 10 has no size argument
+            return ImageFont.load_default()
+
+
+def _render_png_b64(payload: str, caption: str | None = None) -> str:
+    """Render the QR code (with an optional caption) to a base64 PNG string.
+
+    Runs in the executor.
+    """
     import qrcode  # noqa: PLC0415 - heavy import, deferred to runtime
+    from PIL import Image, ImageDraw  # noqa: PLC0415
+
+    qr_img = qrcode.make(payload).get_image().convert("RGB")
+    caption = (caption or "").strip()
+    if not caption:
+        buffer = BytesIO()
+        qr_img.save(buffer, format="PNG")
+        return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+    width, height = qr_img.size
+    pad = max(12, width // 25)
+    font = _load_font(max(16, width // 16))
+    line_h = font.size + 6 if hasattr(font, "size") else 22
+
+    # Word-wrap the caption to the QR width.
+    measure = ImageDraw.Draw(qr_img)
+    max_w = width - 2 * pad
+    lines: list[str] = []
+    current = ""
+    for word in caption.split():
+        trial = f"{current} {word}".strip()
+        if not current or measure.textlength(trial, font=font) <= max_w:
+            current = trial
+        else:
+            lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+
+    canvas = Image.new("RGB", (width, height + line_h * len(lines) + pad), "white")
+    canvas.paste(qr_img, (0, 0))
+    draw = ImageDraw.Draw(canvas)
+    y = height + pad // 2
+    for line in lines:
+        draw.text((width / 2, y), line, fill="black", anchor="ma", font=font)
+        y += line_h
 
     buffer = BytesIO()
-    qrcode.make(payload).save(buffer, format="PNG")
+    canvas.save(buffer, format="PNG")
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
