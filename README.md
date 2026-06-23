@@ -41,6 +41,29 @@ extra config UI to fight with.
 
 All except the URL/name are editable later via **Configure**.
 
+## Admin panel
+
+After setup, an admin-only **QR Codes** entry appears in the Home Assistant
+sidebar. It's a full management UI (backed by a WebSocket API) where you can:
+
+- **See every code** for each configured reader, with its validity and the
+  script bound to it.
+- **Add a code** — register a payload with optional validity (dates, weekdays,
+  time window) and a **script to run on an authorized scan**.
+- **Generate a code** — mint a secure random code, pick its complexity, set its
+  validity/script, and **download the QR PNG** right from the dialog.
+- **Edit / delete** codes.
+
+Rule edits apply live — they do **not** restart the camera stream. (Changing
+stream settings like FPS/URL still reloads, as it must.)
+
+### Run a script automatically on scan
+
+Each code can name a `script.*` entity. When that code is scanned **and**
+passes its validity check, the integration calls the script for you — no
+automation required. (You can still use the `qr_rtsp_scanned` event for anything
+more elaborate, e.g. handling denied scans.)
+
 ## Generating secure QR codes
 
 The `qr_rtsp.generate_code` service mints a random code, renders a downloadable
@@ -83,17 +106,32 @@ Response data:
 | `payload` | The full encoded string. |
 | `name` | The name you passed. |
 | `random` | The random token only. |
-| `image_url` | Downloadable URL, e.g. `/local/qr_rtsp/guest-weekend-1a2b3c4d.png`. |
-| `image_path` | Absolute file path on disk (under `config/www/qr_rtsp/`). |
+| `image_b64` | The QR PNG, base64-encoded. |
 | `registered_entries` | Entry IDs the rule was added to (empty if not registering). |
-
-The PNG is written to `config/www/qr_rtsp/` and served at `/local/qr_rtsp/…`,
-so you can open/download it in a browser, attach it to a notification, or show
-it in a dashboard `picture` card. When `register: true`, the code is enforced by
-the same validity engine described below — no copy/paste needed.
 
 > `register: true` requires at least one `device_id`. Without registering, the
 > service just produces the payload + image.
+
+### The QR images are protected
+
+QR codes are sensitive (the random token *is* the key), so the integration
+**never writes them to a public folder**. The image is returned as base64 over
+the authenticated service/WebSocket response only. To turn `image_b64` into a
+file (e.g. to attach to a notification), decode it yourself, e.g.:
+
+```yaml
+- variables:
+    qr: "{{ qr }}"            # response_variable from the action above
+- service: notify.persistent_notification
+  data:
+    message: "QR for {{ qr.name }}"
+# or write it to a file with a shell_command / python_script using
+# base64.b64decode(qr.image_b64)
+```
+
+In the **admin panel**, downloading a code streams the PNG over the
+authenticated WebSocket and saves it via an in-browser data URL — again, no
+public URL is ever created.
 
 ## Access rules (validity & schedule)
 

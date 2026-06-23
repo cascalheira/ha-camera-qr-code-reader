@@ -51,7 +51,8 @@
           "valid_until": "Valid until (date, inclusive)",
           "weekdays": "Allowed weekdays",
           "start_time": "Allowed from (time of day)",
-          "end_time": "Allowed until (time of day)"
+          "end_time": "Allowed until (time of day)",
+          "script_entity": "Script to run on an authorized scan"
         }
       },
       "manage_rules": {
@@ -71,6 +72,7 @@
           "weekdays": "Allowed weekdays",
           "start_time": "Allowed from (time of day)",
           "end_time": "Allowed until (time of day)",
+          "script_entity": "Script to run on an authorized scan",
           "delete": "Delete this rule"
         }
       }

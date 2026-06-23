@@ -34,6 +34,7 @@ from .const import (
     RULE_END_TIME,
     RULE_NAME,
     RULE_PAYLOAD,
+    RULE_SCRIPT,
     RULE_START_TIME,
     RULE_VALID_FROM,
     RULE_VALID_UNTIL,
@@ -41,7 +42,7 @@ from .const import (
     TRANSPORTS,
     WEEKDAYS,
 )
-from .rules import _parse_date
+from .rules import _parse_date, normalize_rule
 
 _FPS = vol.All(vol.Coerce(float), vol.Range(min=0.1, max=30))
 _WIDTH = vol.All(vol.Coerce(int), vol.Range(min=0, max=4096))
@@ -118,25 +119,11 @@ def _rule_schema(rule: dict[str, Any]) -> vol.Schema:
                 RULE_START_TIME, rule.get(RULE_START_TIME)
             ): selector.TimeSelector(),
             _optional(RULE_END_TIME, rule.get(RULE_END_TIME)): selector.TimeSelector(),
+            _optional(RULE_SCRIPT, rule.get(RULE_SCRIPT)): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="script")
+            ),
         }
     )
-
-
-def _clean_rule(user_input: dict[str, Any]) -> dict[str, Any]:
-    """Normalize form input into a stored rule, dropping empty constraints."""
-    rule: dict[str, Any] = {RULE_PAYLOAD: user_input[RULE_PAYLOAD].strip()}
-    for key in (
-        RULE_NAME,
-        RULE_VALID_FROM,
-        RULE_VALID_UNTIL,
-        RULE_START_TIME,
-        RULE_END_TIME,
-        RULE_WEEKDAYS,
-    ):
-        value = user_input.get(key)
-        if value:
-            rule[key] = value
-    return rule
 
 
 def _validate_rule(user_input: dict[str, Any]) -> dict[str, str]:
@@ -259,7 +246,7 @@ class QrRtspOptionsFlow(OptionsFlow):
         if user_input is not None:
             errors = _validate_rule(user_input)
             if not errors:
-                new = _clean_rule(user_input)
+                new = normalize_rule(user_input)
                 rules = [
                     r for r in self._rules() if r[RULE_PAYLOAD] != new[RULE_PAYLOAD]
                 ]
@@ -311,7 +298,7 @@ class QrRtspOptionsFlow(OptionsFlow):
                 return self._save(**{CONF_RULES: rules})
             errors = _validate_rule(user_input)
             if not errors:
-                rules[self._edit_index] = _clean_rule(user_input)
+                rules[self._edit_index] = normalize_rule(user_input)
                 return self._save(**{CONF_RULES: rules})
             rule = user_input
 

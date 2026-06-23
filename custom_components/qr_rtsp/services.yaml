@@ -2,8 +2,9 @@ generate_code:
   name: Generate QR code
   description: >-
     Create a secure random QR code with payload
-    "ha-camera-qr-code-reader|<name>|<random>", save it as a downloadable PNG,
-    and optionally register it as an access rule on a device.
+    "ha-camera-qr-code-reader|<name>|<random>". Returns the PNG as base64 in the
+    response data (never written to a public folder) and can optionally register
+    it as an access rule on a device.
   fields:
     name:
       name: Name
@@ -69,3 +70,9 @@ generate_code:
       description: End of the daily time window (may wrap past midnight).
       selector:
         time:
+    script_entity:
+      name: Script on scan
+      description: Script to run when this code is scanned and authorized (requires register).
+      selector:
+        entity:
+          domain: script

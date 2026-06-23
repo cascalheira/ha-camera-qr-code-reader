@@ -34,6 +34,7 @@ RULE_VALID_UNTIL = "valid_until"  # ISO date, inclusive (whole day)
 RULE_WEEKDAYS = "weekdays"  # list of WEEKDAYS values; empty = all days
 RULE_START_TIME = "start_time"  # ISO time, inclusive
 RULE_END_TIME = "end_time"  # ISO time, inclusive (may wrap past midnight)
+RULE_SCRIPT = "script_entity"  # script.* entity to run on an authorized scan
 
 # Monday-first weekday keys, aligned with datetime.weekday()
 WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
@@ -55,6 +56,14 @@ SERVICE_GENERATE = "generate_code"
 DEFAULT_ENTROPY_BYTES = 16  # 128 bits of randomness
 MIN_ENTROPY_BYTES = 8
 MAX_ENTROPY_BYTES = 64
+
+# Admin panel + static frontend
+PANEL_URL_PATH = "qr-rtsp"
+PANEL_TITLE = "QR Codes"
+PANEL_ICON = "mdi:qrcode-scan"
+PANEL_WEBCOMPONENT = "qr-rtsp-panel"
+STATIC_URL = "/qr_rtsp_frontend"
+PANEL_JS = "qr-rtsp-panel.js"
 
 # Event fired on every (debounced) scan
 EVENT_QR_SCANNED = f"{DOMAIN}_scanned"

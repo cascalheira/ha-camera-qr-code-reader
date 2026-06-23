@@ -17,13 +17,37 @@ from .const import (
     REASON_OK,
     REASON_OUT_OF_SCHEDULE,
     RULE_END_TIME,
+    RULE_NAME,
     RULE_PAYLOAD,
+    RULE_SCRIPT,
     RULE_START_TIME,
     RULE_VALID_FROM,
     RULE_VALID_UNTIL,
     RULE_WEEKDAYS,
     WEEKDAYS,
 )
+
+# Optional fields stored alongside the required payload.
+RULE_OPTIONAL_FIELDS = (
+    RULE_NAME,
+    RULE_VALID_FROM,
+    RULE_VALID_UNTIL,
+    RULE_WEEKDAYS,
+    RULE_START_TIME,
+    RULE_END_TIME,
+    RULE_SCRIPT,
+)
+
+
+def normalize_rule(data: Mapping[str, Any]) -> dict[str, Any]:
+    """Build a stored rule from arbitrary input, dropping empty constraints."""
+    payload = data.get(RULE_PAYLOAD)
+    rule: dict[str, Any] = {RULE_PAYLOAD: payload.strip() if payload else ""}
+    for key in RULE_OPTIONAL_FIELDS:
+        value = data.get(key)
+        if value:
+            rule[key] = value
+    return rule
 
 
 def find_rule(
