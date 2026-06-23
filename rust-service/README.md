@@ -60,10 +60,37 @@ docker run -d --name qr-vision -p 8723:8723 \
   qr-vision-service
 ```
 
+### Compiled binary with a .env file
+
+`cp .env.example .env`, edit it, then run the binary **from the directory that
+contains `.env`** — it is loaded automatically (real env vars still win):
+
+```bash
+cargo build --release
+cp .env.example .env && $EDITOR .env
+./target/release/qr-vision-service
+```
+
+(`dotenvy` searches the working directory and its parents, so running from the
+project root works too.)
+
 ### From source
 
 ```bash
 QR_SERVICE_SECRET=your-long-secret cargo run --release
+```
+
+### As a systemd service
+
+```ini
+# /etc/systemd/system/qr-vision.service
+[Service]
+EnvironmentFile=/opt/qr-vision/.env
+ExecStart=/opt/qr-vision/qr-vision-service
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
 ```
 
 Then in Home Assistant, add/configure the integration with **Processing mode =
