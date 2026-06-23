@@ -35,6 +35,7 @@ from .const import (
     RULE_PAYLOAD,
     RULE_SCRIPT,
     RULE_START_TIME,
+    RULE_TITLE,
     RULE_VALID_FROM,
     RULE_VALID_UNTIL,
     RULE_WEEKDAYS,
@@ -53,6 +54,7 @@ ATTR_DEVICE_ID = "device_id"
 _GENERATE_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_NAME): cv.string,
+        vol.Optional(RULE_TITLE): cv.string,
         vol.Optional(ATTR_ENTROPY, default=DEFAULT_ENTROPY_BYTES): vol.All(
             vol.Coerce(int), vol.Range(min=MIN_ENTROPY_BYTES, max=MAX_ENTROPY_BYTES)
         ),

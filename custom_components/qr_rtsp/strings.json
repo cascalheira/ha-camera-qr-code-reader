@@ -46,7 +46,8 @@
         "description": "Bind a QR payload to a validity window. Leave a field empty to leave it unrestricted.",
         "data": {
           "payload": "QR payload (exact text in the code)",
-          "name": "Friendly name (optional)",
+          "title": "Title (what this code is for)",
+          "name": "Name (short identifier, embedded in the code)",
           "valid_from": "Valid from (date)",
           "valid_until": "Valid until (date, inclusive)",
           "weekdays": "Allowed weekdays",
@@ -66,7 +67,8 @@
         "description": "Change the rule, or tick Delete to remove it. Leave a field empty to leave it unrestricted.",
         "data": {
           "payload": "QR payload (exact text in the code)",
-          "name": "Friendly name (optional)",
+          "title": "Title (what this code is for)",
+          "name": "Name (short identifier, embedded in the code)",
           "valid_from": "Valid from (date)",
           "valid_until": "Valid until (date, inclusive)",
           "weekdays": "Allowed weekdays",

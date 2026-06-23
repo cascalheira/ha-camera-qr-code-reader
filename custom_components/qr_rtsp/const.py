@@ -27,7 +27,8 @@ CONF_DEFAULT_ALLOW_UNLISTED = "default_allow_unlisted"
 DEFAULT_ALLOW_UNLISTED = True
 
 # Per-rule fields
-RULE_NAME = "name"
+RULE_NAME = "name"  # short identifier, embedded in the payload
+RULE_TITLE = "title"  # free-form description shown in the UI (not in payload)
 RULE_PAYLOAD = "payload"
 RULE_VALID_FROM = "valid_from"  # ISO date, inclusive
 RULE_VALID_UNTIL = "valid_until"  # ISO date, inclusive (whole day)

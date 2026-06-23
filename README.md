@@ -48,8 +48,9 @@ sidebar. It's a full management UI (backed by a WebSocket API) where you can:
 
 - **See every code** for each configured reader, with its validity and the
   script bound to it.
-- **Add a code** — register a payload with optional validity (dates, weekdays,
-  time window) and a **script to run on an authorized scan**.
+- **Add a code** — register a payload with a **title** (free-form description of
+  what the code is for), optional validity (dates, weekdays, time window) and a
+  **script to run on an authorized scan**.
 - **Generate a code** — mint a secure random code, pick its complexity, set its
   validity/script, and **download the QR PNG** right from the dialog.
 - **Edit / delete** codes.
@@ -183,7 +184,8 @@ automation:
           entity_id: switch.front_door
 ```
 
-Event data: `payload`, `type`, `name`, `entry_id`, `authorized`, `reason`, `rule`.
+Event data: `payload`, `type`, `name`, `entry_id`, `authorized`, `reason`,
+`rule`, `title`.
 
 ### Sensor-based
 

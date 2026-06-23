@@ -130,9 +130,9 @@ class QrRtspPanel extends HTMLElement {
           ? esc(this._friendly(r.script_entity))
           : `<span class="muted">—</span>`;
         return `<tr>
-          <td><b>${esc(r.name || "")}</b><div class="muted mono">${esc(
-          this._shortPayload(r.payload)
-        )}</div></td>
+          <td><b>${esc(r.title || r.name || "")}</b>${
+          r.title && r.name ? `<div class="muted small">${esc(r.name)}</div>` : ""
+        }<div class="muted mono">${esc(this._shortPayload(r.payload))}</div></td>
           <td>${esc(this._validity(r))}</td>
           <td>${script}</td>
           <td class="actions">
@@ -169,7 +169,7 @@ class QrRtspPanel extends HTMLElement {
       });
       const url = `data:image/png;base64,${image_b64}`;
       this._modal(
-        rule.name || "QR code",
+        rule.title || rule.name || "QR code",
         `<div class="result">
            <img src="${url}" alt="QR code" />
            <div>
@@ -249,42 +249,101 @@ class QrRtspPanel extends HTMLElement {
 
   _ruleFormFields(r) {
     return `
-      <label>Name<input id="f-name" type="text" value="${esc(r.name || "")}"></label>
+      <label>Title (what this code is for)
+        <input id="f-title" type="text" value="${esc(r.title || "")}" placeholder="e.g. Weekend guest access"></label>
+      <label>Name (short identifier, embedded in the code)
+        <input id="f-name" type="text" value="${esc(r.name || "")}"></label>
       <label>QR payload (exact text in the code)
         <input id="f-payload" type="text" value="${esc(r.payload || "")}"></label>
-      <div class="row">
-        <label>Valid from<input id="f-from" type="date" value="${esc(r.valid_from || "")}"></label>
-        <label>Valid until<input id="f-until" type="date" value="${esc(r.valid_until || "")}"></label>
-      </div>
-      <label>Allowed weekdays
-        <div class="days">${WEEKDAYS.map(
-          ([v, l]) =>
-            `<label class="day"><input type="checkbox" value="${v}" ${
-              (r.weekdays || []).includes(v) ? "checked" : ""
-            }>${l}</label>`
-        ).join("")}</div>
-      </label>
-      <div class="row">
-        <label>Allowed from<input id="f-start" type="time" value="${esc(r.start_time || "")}"></label>
-        <label>Allowed until<input id="f-end" type="time" value="${esc(r.end_time || "")}"></label>
-      </div>
-      <label>Script to run on authorized scan
-        <select id="f-script">${this._scriptOptions(r.script_entity || "")}</select></label>
+      ${this._validityFieldsHtml(r)}
     `;
+  }
+
+  /** Optional limits, each behind an off-by-default toggle. */
+  _validityFieldsHtml(r) {
+    const has = (k) =>
+      r[k] != null && r[k] !== "" && !(Array.isArray(r[k]) && !r[k].length);
+    const sec = (key, label, on, inner) => `
+      <div class="toggle-sec">
+        <label class="switch"><input type="checkbox" id="t-${key}" ${
+      on ? "checked" : ""
+    }> ${label}</label>
+        <div class="sec" id="s-${key}" style="${on ? "" : "display:none"}">${inner}</div>
+      </div>`;
+
+    const dates = sec(
+      "dates",
+      "Limit to a date range",
+      has("valid_from") || has("valid_until"),
+      `<div class="row">
+         <label>Valid from<input id="f-from" type="date" value="${esc(r.valid_from || "")}"></label>
+         <label>Valid until<input id="f-until" type="date" value="${esc(r.valid_until || "")}"></label>
+       </div>`
+    );
+    const days = sec(
+      "days",
+      "Limit to certain weekdays",
+      (r.weekdays || []).length > 0,
+      `<div class="days">${WEEKDAYS.map(
+        ([v, l]) =>
+          `<label class="day"><input type="checkbox" value="${v}" ${
+            (r.weekdays || []).includes(v) ? "checked" : ""
+          }>${l}</label>`
+      ).join("")}</div>`
+    );
+    const time = sec(
+      "time",
+      "Limit to a time of day",
+      has("start_time") || has("end_time"),
+      `<div class="row">
+         <label>Allowed from<input id="f-start" type="time" value="${esc(r.start_time || "")}"></label>
+         <label>Allowed until<input id="f-end" type="time" value="${esc(r.end_time || "")}"></label>
+       </div>`
+    );
+    return `${dates}${days}${time}
+      <label>Script to run on authorized scan
+        <select id="f-script">${this._scriptOptions(r.script_entity || "")}</select></label>`;
+  }
+
+  _wireToggles() {
+    ["dates", "days", "time"].forEach((k) => {
+      const t = this.shadowRoot.getElementById(`t-${k}`);
+      const s = this.shadowRoot.getElementById(`s-${k}`);
+      if (t && s)
+        t.addEventListener("change", () => {
+          s.style.display = t.checked ? "" : "none";
+        });
+    });
   }
 
   _collectRuleForm() {
     const sr = this.shadowRoot;
-    const v = (id) => sr.getElementById(id).value.trim();
-    const days = [...sr.querySelectorAll('.days input:checked')].map((c) => c.value);
-    const rule = { payload: v("f-payload") };
-    const name = v("f-name");
-    if (name) rule.name = name;
-    if (v("f-from")) rule.valid_from = v("f-from");
-    if (v("f-until")) rule.valid_until = v("f-until");
-    if (days.length) rule.weekdays = days;
-    if (v("f-start")) rule.start_time = v("f-start");
-    if (v("f-end")) rule.end_time = v("f-end");
+    const v = (id) => {
+      const el = sr.getElementById(id);
+      return el ? el.value.trim() : "";
+    };
+    const on = (id) => {
+      const el = sr.getElementById(id);
+      return !!(el && el.checked);
+    };
+    const rule = {};
+    if (v("f-payload")) rule.payload = v("f-payload");
+    if (v("f-title")) rule.title = v("f-title");
+    if (v("f-name")) rule.name = v("f-name");
+    if (on("t-dates")) {
+      if (v("f-from")) rule.valid_from = v("f-from");
+      if (v("f-until")) rule.valid_until = v("f-until");
+    }
+    if (on("t-days")) {
+      const days = [...sr.querySelectorAll(".days input:checked")].map(
+        (c) => c.value
+      );
+      if (days.length) rule.weekdays = days;
+    }
+    if (on("t-time")) {
+      if (v("f-start")) rule.start_time = v("f-start");
+      if (v("f-end")) rule.end_time = v("f-end");
+    }
     if (v("f-script")) rule.script_entity = v("f-script");
     return rule;
   }
@@ -297,6 +356,7 @@ class QrRtspPanel extends HTMLElement {
       `<button class="btn ghost" id="d-cancel">Cancel</button>
        <button class="btn" id="d-save">Save</button>`
     );
+    this._wireToggles();
     this.shadowRoot.getElementById("d-cancel").onclick = () => this._closeModal();
     this.shadowRoot.getElementById("d-save").onclick = async () => {
       const rule = this._collectRuleForm();
@@ -327,28 +387,17 @@ class QrRtspPanel extends HTMLElement {
       "Generate secure code",
       `<form id="gen-form">
          <label>Name<input id="g-name" type="text" placeholder="guest-weekend"></label>
+         <label>Title (what this code is for)
+           <input id="f-title" type="text" placeholder="e.g. Weekend guest access"></label>
          <label>Complexity (bytes of randomness): <span id="g-eval">16</span>
            <input id="g-bytes" type="range" min="8" max="64" value="16"></label>
-         <div class="row">
-           <label>Valid from<input id="f-from" type="date"></label>
-           <label>Valid until<input id="f-until" type="date"></label>
-         </div>
-         <label>Allowed weekdays
-           <div class="days">${WEEKDAYS.map(
-             ([v, l]) =>
-               `<label class="day"><input type="checkbox" value="${v}">${l}</label>`
-           ).join("")}</div></label>
-         <div class="row">
-           <label>Allowed from<input id="f-start" type="time"></label>
-           <label>Allowed until<input id="f-end" type="time"></label>
-         </div>
-         <label>Script to run on authorized scan
-           <select id="f-script">${this._scriptOptions("")}</select></label>
+         ${this._validityFieldsHtml({})}
        </form>
        <div id="gen-result"></div>`,
       `<button class="btn ghost" id="d-cancel">Close</button>
        <button class="btn" id="d-gen">Generate</button>`
     );
+    this._wireToggles();
     const bytes = this.shadowRoot.getElementById("g-bytes");
     bytes.oninput = () =>
       (this.shadowRoot.getElementById("g-eval").textContent = bytes.value);
@@ -392,7 +441,9 @@ class QrRtspPanel extends HTMLElement {
   _confirmDelete(rule) {
     this._modal(
       "Delete code",
-      `<p>Delete <b>${esc(rule.name || this._shortPayload(rule.payload))}</b>?</p>`,
+      `<p>Delete <b>${esc(
+        rule.title || rule.name || this._shortPayload(rule.payload)
+      )}</b>?</p>`,
       `<button class="btn ghost" id="d-cancel">Cancel</button>
        <button class="btn danger" id="d-del">Delete</button>`
     );
@@ -458,6 +509,10 @@ const STYLES = `
   .dfoot { padding: 14px 18px; display:flex; justify-content:flex-end; gap:10px; border-top:1px solid var(--divider-color,#eee); }
   label { display:flex; flex-direction:column; gap:6px; font-size:13px; color: var(--secondary-text-color); }
   .row { display:flex; gap:12px; } .row > label { flex:1; }
+  .toggle-sec { border-top:1px solid var(--divider-color,#eee); padding-top:12px; }
+  .switch { flex-direction:row; align-items:center; gap:8px; font-size:14px; color: var(--primary-text-color); cursor:pointer; }
+  .switch input { width:auto; }
+  .sec { margin-top:12px; display:flex; flex-direction:column; gap:12px; }
   .days { display:flex; gap:6px; flex-wrap:wrap; }
   .day { flex-direction:row; align-items:center; gap:4px; background: var(--secondary-background-color,#f1f1f1);
          padding:6px 10px; border-radius:8px; color: var(--primary-text-color); }

@@ -21,6 +21,7 @@ from .const import (
     RULE_PAYLOAD,
     RULE_SCRIPT,
     RULE_START_TIME,
+    RULE_TITLE,
     RULE_VALID_FROM,
     RULE_VALID_UNTIL,
     RULE_WEEKDAYS,
@@ -30,6 +31,7 @@ from .const import (
 # Optional fields stored alongside the required payload.
 RULE_OPTIONAL_FIELDS = (
     RULE_NAME,
+    RULE_TITLE,
     RULE_VALID_FROM,
     RULE_VALID_UNTIL,
     RULE_WEEKDAYS,

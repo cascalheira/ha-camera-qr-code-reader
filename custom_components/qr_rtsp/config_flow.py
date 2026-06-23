@@ -36,6 +36,7 @@ from .const import (
     RULE_PAYLOAD,
     RULE_SCRIPT,
     RULE_START_TIME,
+    RULE_TITLE,
     RULE_VALID_FROM,
     RULE_VALID_UNTIL,
     RULE_WEEKDAYS,
@@ -101,6 +102,7 @@ def _rule_schema(rule: dict[str, Any]) -> vol.Schema:
                 RULE_PAYLOAD,
                 description={"suggested_value": rule.get(RULE_PAYLOAD)},
             ): selector.TextSelector(),
+            _optional(RULE_TITLE, rule.get(RULE_TITLE)): selector.TextSelector(),
             _optional(RULE_NAME, rule.get(RULE_NAME)): selector.TextSelector(),
             _optional(
                 RULE_VALID_FROM, rule.get(RULE_VALID_FROM)

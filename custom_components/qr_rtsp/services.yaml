@@ -8,9 +8,15 @@ generate_code:
   fields:
     name:
       name: Name
-      description: Friendly name embedded in the payload (must not contain "|").
+      description: Short identifier embedded in the payload (must not contain "|").
       required: true
       example: guest-weekend
+      selector:
+        text:
+    title:
+      name: Title
+      description: Free-form description shown in the admin UI (not part of the code).
+      example: Weekend guest gate access
       selector:
         text:
     entropy_bytes:

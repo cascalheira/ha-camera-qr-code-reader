@@ -36,6 +36,7 @@ from .const import (
     RULE_NAME,
     RULE_PAYLOAD,
     RULE_SCRIPT,
+    RULE_TITLE,
     SIGNAL_UPDATE,
 )
 from .panel import async_register_panel, async_remove_panel
@@ -95,9 +96,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: QrRtspConfigEntry) -> bo
         )
 
         rule = find_rule(rules, payload)
+        rule_title = None
         if rule is not None:
             authorized, reason = evaluate(rule, dt_util.now())
             rule_name = rule.get(RULE_NAME) or rule.get(RULE_PAYLOAD)
+            rule_title = rule.get(RULE_TITLE)
         elif rules:
             authorized = allow_unlisted
             reason = REASON_OK if allow_unlisted else REASON_UNKNOWN
@@ -122,6 +125,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: QrRtspConfigEntry) -> bo
                 "authorized": authorized,
                 "reason": reason,
                 "rule": rule_name,
+                "title": rule_title,
             },
         )
         async_dispatcher_send(hass, SIGNAL_UPDATE.format(entry_id=entry.entry_id))
