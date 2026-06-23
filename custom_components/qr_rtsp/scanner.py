@@ -106,6 +106,7 @@ class QrStreamScanner:
             "last_frame": self._last_frame.isoformat() if self._last_frame else None,
             "last_error": self._last_error,
             "fps": self._fps,
+            "mode": "local",
             "url": _redact_url(self._url),
         }
 

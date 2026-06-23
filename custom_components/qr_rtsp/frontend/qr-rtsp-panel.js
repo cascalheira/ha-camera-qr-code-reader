@@ -118,15 +118,14 @@ class QrRtspPanel extends HTMLElement {
     };
     const [color, label] = map[s.state] || ["#9e9e9e", s.state || "Unknown"];
     const ago = s.last_frame ? this._ago(s.last_frame) : "—";
+    const mode = s.mode ? ` · ${s.mode}` : "";
     el.innerHTML = `
       <span class="dot" style="background:${color}"></span>
       <b>${esc(label)}</b>
-      <span class="muted">· last frame ${esc(ago)} · ${s.frames || 0} frames${
-      s.fps ? ` · ${s.fps} fps` : ""
-    }</span>
-      ${
-        s.url ? `<div class="muted small mono">${esc(s.url)}</div>` : ""
-      }
+      <span class="muted">${esc(mode)} · last frame ${esc(ago)} · ${
+      s.frames || 0
+    } frames${s.fps ? ` · ${s.fps} fps` : ""}</span>
+      ${s.url ? `<div class="muted small mono">${esc(s.url)}</div>` : ""}
       ${
         s.last_error
           ? `<div class="small err">${esc(s.last_error)}</div>`

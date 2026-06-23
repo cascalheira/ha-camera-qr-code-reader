@@ -23,6 +23,27 @@ integration:
 You map codes to actions in your own automations — maximum flexibility, no
 extra config UI to fight with.
 
+## Processing mode: local or remote
+
+You can choose where the heavy video work happens:
+
+- **Local** (default) — Home Assistant decodes the RTSP stream and scans for QR
+  codes itself. Simplest, but a Raspberry Pi 5 has no hardware H.264 decoder, so
+  it can struggle.
+- **Remote** — offload decoding + detection to the companion
+  [**qr-vision-service**](rust-service/) (a small Rust worker), e.g. on a
+  Proxmox VM with GPU passthrough. Home Assistant stays the control plane (rules,
+  panel, history, status); it just connects over an authenticated WebSocket and
+  receives scan events. Same UI, same behavior.
+
+Set this in the integration's setup / **Configure → General settings**:
+**Processing mode**, **Service URL** (`ws://<host>:8723/ws`), and a **Secret
+key** that must match the service's `QR_SERVICE_SECRET`. See
+[`rust-service/README.md`](rust-service/README.md) to run it.
+
+The status bar in the admin panel shows which mode is active (`local` / `remote`)
+and whether it's currently streaming.
+
 ## Installation (HACS)
 
 1. HACS → ⋮ → **Custom repositories** → add this repo as an **Integration**.

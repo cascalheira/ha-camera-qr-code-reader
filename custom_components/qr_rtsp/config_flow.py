@@ -20,17 +20,23 @@ from .const import (
     CONF_DEFAULT_ALLOW_UNLISTED,
     CONF_FPS,
     CONF_NAME,
+    CONF_PROCESSING_MODE,
     CONF_RTSP_TRANSPORT,
     CONF_RULES,
+    CONF_SECRET_KEY,
+    CONF_SERVICE_URL,
     CONF_STREAM_URL,
     CONF_WIDTH,
     DEFAULT_ALLOW_UNLISTED,
     DEFAULT_COOLDOWN,
     DEFAULT_FPS,
+    DEFAULT_MODE,
     DEFAULT_NAME,
     DEFAULT_TRANSPORT,
     DEFAULT_WIDTH,
     DOMAIN,
+    MODE_REMOTE,
+    PROCESSING_MODES,
     RULE_END_TIME,
     RULE_NAME,
     RULE_PAYLOAD,
@@ -79,8 +85,33 @@ def _user_schema(defaults: dict[str, Any]) -> vol.Schema:
             vol.Optional(
                 CONF_COOLDOWN, default=defaults.get(CONF_COOLDOWN, DEFAULT_COOLDOWN)
             ): _COOLDOWN,
+            vol.Optional(
+                CONF_PROCESSING_MODE,
+                default=defaults.get(CONF_PROCESSING_MODE, DEFAULT_MODE),
+            ): vol.In(PROCESSING_MODES),
+            vol.Optional(
+                CONF_SERVICE_URL, default=defaults.get(CONF_SERVICE_URL, "")
+            ): str,
+            vol.Optional(
+                CONF_SECRET_KEY, default=defaults.get(CONF_SECRET_KEY, "")
+            ): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+            ),
         }
     )
+
+
+def _validate_mode(user_input: dict[str, Any]) -> dict[str, str]:
+    """Validate remote-mode fields. Returns a field->error map (empty if OK)."""
+    errors: dict[str, str] = {}
+    if user_input.get(CONF_PROCESSING_MODE) != MODE_REMOTE:
+        return errors
+    url = (user_input.get(CONF_SERVICE_URL) or "").strip()
+    if not url.startswith(("ws://", "wss://")):
+        errors[CONF_SERVICE_URL] = "invalid_ws_url"
+    if not (user_input.get(CONF_SECRET_KEY) or "").strip():
+        errors[CONF_SECRET_KEY] = "secret_required"
+    return errors
 
 
 def _optional(key: str, value: Any) -> vol.Marker:
@@ -161,7 +192,8 @@ class QrRtspConfigFlow(ConfigFlow, domain=DOMAIN):
             url = user_input[CONF_STREAM_URL].strip()
             if not url.startswith(("rtsp://", "rtsps://", "http://", "https://")):
                 errors[CONF_STREAM_URL] = "invalid_url"
-            else:
+            errors.update(_validate_mode(user_input))
+            if not errors:
                 await self.async_set_unique_id(url)
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
@@ -211,10 +243,14 @@ class QrRtspOptionsFlow(OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Edit stream/scan tuning settings."""
-        if user_input is not None:
-            return self._save(**user_input)
-
         current = {**self.config_entry.data, **self.config_entry.options}
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            errors = _validate_mode({**current, **user_input})
+            if not errors:
+                return self._save(**user_input)
+            current = {**current, **user_input}
+
         schema = vol.Schema(
             {
                 vol.Optional(
@@ -236,9 +272,27 @@ class QrRtspOptionsFlow(OptionsFlow):
                         CONF_DEFAULT_ALLOW_UNLISTED, DEFAULT_ALLOW_UNLISTED
                     ),
                 ): bool,
+                vol.Optional(
+                    CONF_PROCESSING_MODE,
+                    default=current.get(CONF_PROCESSING_MODE, DEFAULT_MODE),
+                ): vol.In(PROCESSING_MODES),
+                vol.Optional(
+                    CONF_SERVICE_URL,
+                    default=current.get(CONF_SERVICE_URL, ""),
+                ): str,
+                vol.Optional(
+                    CONF_SECRET_KEY,
+                    default=current.get(CONF_SECRET_KEY, ""),
+                ): selector.TextSelector(
+                    selector.TextSelectorConfig(
+                        type=selector.TextSelectorType.PASSWORD
+                    )
+                ),
             }
         )
-        return self.async_show_form(step_id="general", data_schema=schema)
+        return self.async_show_form(
+            step_id="general", data_schema=schema, errors=errors
+        )
 
     async def async_step_add_rule(
         self, user_input: dict[str, Any] | None = None

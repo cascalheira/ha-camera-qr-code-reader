@@ -10,12 +10,17 @@
           "rtsp_transport": "RTSP transport",
           "fps": "Frames per second to scan",
           "width": "Downscale width (px, 0 = original)",
-          "cooldown": "Re-trigger cooldown (seconds)"
+          "cooldown": "Re-trigger cooldown (seconds)",
+          "processing_mode": "Processing mode (local on this host, or remote service)",
+          "service_url": "Remote service URL (ws://host:8723/ws) — remote mode",
+          "secret_key": "Remote service secret key — remote mode"
         }
       }
     },
     "error": {
-      "invalid_url": "URL must start with rtsp://, rtsps://, http:// or https://"
+      "invalid_url": "URL must start with rtsp://, rtsps://, http:// or https://",
+      "invalid_ws_url": "Service URL must start with ws:// or wss://",
+      "secret_required": "A secret key is required for remote processing"
     },
     "abort": {
       "already_configured": "This stream is already configured."
@@ -38,7 +43,10 @@
           "fps": "Frames per second to scan",
           "width": "Downscale width (px, 0 = original)",
           "cooldown": "Re-trigger cooldown (seconds)",
-          "default_allow_unlisted": "Authorize codes that have no rule"
+          "default_allow_unlisted": "Authorize codes that have no rule",
+          "processing_mode": "Processing mode (local on this host, or remote service)",
+          "service_url": "Remote service URL (ws://host:8723/ws) — remote mode",
+          "secret_key": "Remote service secret key — remote mode"
         }
       },
       "add_rule": {
@@ -81,7 +89,9 @@
     },
     "error": {
       "payload_required": "A QR payload is required.",
-      "invalid_dates": "\"Valid until\" is before \"Valid from\"."
+      "invalid_dates": "\"Valid until\" is before \"Valid from\".",
+      "invalid_ws_url": "Service URL must start with ws:// or wss://",
+      "secret_required": "A secret key is required for remote processing"
     },
     "abort": {
       "no_rules": "No rules defined yet — add one first."

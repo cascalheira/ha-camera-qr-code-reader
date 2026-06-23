@@ -1,0 +1,23 @@
+[package]
+name = "qr-vision-service"
+version = "0.1.0"
+edition = "2021"
+description = "Remote video-processing worker for the Home Assistant QR Code RTSP Reader"
+license = "MIT"
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "sync", "time", "net", "signal"] }
+axum = { version = "0.7", features = ["ws"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
+rqrr = "0.9"
+anyhow = "1"
+futures-util = "0.3"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"

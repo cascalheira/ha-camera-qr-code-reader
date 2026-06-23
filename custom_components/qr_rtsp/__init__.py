@@ -18,17 +18,22 @@ from .const import (
     CONF_DEFAULT_ALLOW_UNLISTED,
     CONF_FPS,
     CONF_NAME,
+    CONF_PROCESSING_MODE,
     CONF_RTSP_TRANSPORT,
     CONF_RULES,
+    CONF_SECRET_KEY,
+    CONF_SERVICE_URL,
     CONF_STREAM_URL,
     CONF_WIDTH,
     DEFAULT_ALLOW_UNLISTED,
     DEFAULT_COOLDOWN,
     DEFAULT_FPS,
+    DEFAULT_MODE,
     DEFAULT_NAME,
     DEFAULT_TRANSPORT,
     DEFAULT_WIDTH,
     DOMAIN,
+    MODE_REMOTE,
     EVENT_QR_SCANNED,
     REASON_NO_RULES,
     REASON_OK,
@@ -41,6 +46,7 @@ from .const import (
 )
 from .history import ScanHistory
 from .panel import async_register_panel, async_remove_panel
+from .remote_scanner import RemoteScanner
 from .rules import evaluate, find_rule
 from .scanner import QrStreamScanner
 from .services import async_setup_services, async_unload_services
@@ -69,7 +75,7 @@ type QrRtspConfigEntry = ConfigEntry[QrRtspData]
 
 
 def _scanner_signature(entry: QrRtspConfigEntry) -> tuple:
-    """Options that, when changed, require restarting the ffmpeg stream."""
+    """Options that, when changed, require restarting the scanner."""
     merged = {**entry.data, **entry.options}
     return (
         merged.get(CONF_STREAM_URL),
@@ -77,6 +83,50 @@ def _scanner_signature(entry: QrRtspConfigEntry) -> tuple:
         merged.get(CONF_FPS, DEFAULT_FPS),
         merged.get(CONF_WIDTH, DEFAULT_WIDTH),
         merged.get(CONF_COOLDOWN, DEFAULT_COOLDOWN),
+        merged.get(CONF_PROCESSING_MODE, DEFAULT_MODE),
+        merged.get(CONF_SERVICE_URL),
+        merged.get(CONF_SECRET_KEY),
+    )
+
+
+def _build_scanner(hass, options, on_scan):
+    """Create the local or remote scanner based on the processing mode."""
+    mode = options.get(CONF_PROCESSING_MODE, DEFAULT_MODE)
+    fps = float(options.get(CONF_FPS, DEFAULT_FPS))
+    width = int(options.get(CONF_WIDTH, DEFAULT_WIDTH))
+    cooldown = float(options.get(CONF_COOLDOWN, DEFAULT_COOLDOWN))
+    transport = options.get(CONF_RTSP_TRANSPORT, DEFAULT_TRANSPORT)
+    stream_url = options[CONF_STREAM_URL]
+
+    if mode == MODE_REMOTE and options.get(CONF_SERVICE_URL) and options.get(
+        CONF_SECRET_KEY
+    ):
+        return RemoteScanner(
+            hass,
+            options[CONF_SERVICE_URL],
+            options[CONF_SECRET_KEY],
+            stream_url=stream_url,
+            transport=transport,
+            fps=fps,
+            width=width,
+            cooldown=cooldown,
+            on_scan=on_scan,
+        )
+
+    if mode == MODE_REMOTE:
+        _LOGGER.warning(
+            "Remote processing selected but service URL/secret missing; "
+            "falling back to local processing"
+        )
+    return QrStreamScanner(
+        hass,
+        get_ffmpeg_manager(hass).binary,
+        stream_url,
+        fps=fps,
+        width=width,
+        cooldown=cooldown,
+        transport=transport,
+        on_scan=on_scan,
     )
 
 
@@ -163,16 +213,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: QrRtspConfigEntry) -> bo
                 name=f"qr_rtsp run {rule[RULE_SCRIPT]}",
             )
 
-    data.scanner = QrStreamScanner(
-        hass,
-        get_ffmpeg_manager(hass).binary,
-        options[CONF_STREAM_URL],
-        fps=float(options.get(CONF_FPS, DEFAULT_FPS)),
-        width=int(options.get(CONF_WIDTH, DEFAULT_WIDTH)),
-        cooldown=float(options.get(CONF_COOLDOWN, DEFAULT_COOLDOWN)),
-        transport=options.get(CONF_RTSP_TRANSPORT, DEFAULT_TRANSPORT),
-        on_scan=_handle_scan,
-    )
+    data.scanner = _build_scanner(hass, options, _handle_scan)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await data.scanner.async_start()

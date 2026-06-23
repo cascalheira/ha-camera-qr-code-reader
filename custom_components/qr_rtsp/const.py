@@ -21,6 +21,15 @@ DEFAULT_COOLDOWN = 3.0  # seconds before the same payload fires again
 
 TRANSPORTS = ["tcp", "udp"]
 
+# Processing mode: scan on this HA host, or offload to the remote Rust service.
+CONF_PROCESSING_MODE = "processing_mode"
+CONF_SERVICE_URL = "service_url"
+CONF_SECRET_KEY = "secret_key"
+MODE_LOCAL = "local"
+MODE_REMOTE = "remote"
+DEFAULT_MODE = MODE_LOCAL
+PROCESSING_MODES = [MODE_LOCAL, MODE_REMOTE]
+
 # Access-rule storage (lives in entry.options)
 CONF_RULES = "rules"
 CONF_DEFAULT_ALLOW_UNLISTED = "default_allow_unlisted"
